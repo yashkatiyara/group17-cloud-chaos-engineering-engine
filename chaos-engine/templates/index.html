@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chaos Control Plane | Group 17</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="navbar">
+        <div class="nav-brand">
+            <span class="logo-icon">⚡</span>
+            <div>
+                <h1>Cloud Chaos Engineering Engine</h1>
+                <p class="subtitle">Group 17 • Resilience Testing & Auto-Rollback Control Plane</p>
+            </div>
+        </div>
+        <div class="nav-actions">
+            <div id="cb-badge" class="badge badge-normal">Circuit Breaker: CLOSED</div>
+            <div class="token-control">
+                <input id="control-token" type="password" placeholder="Cloud control token" autocomplete="off">
+                <button class="btn btn-sm" onclick="saveToken()">Set token</button>
+                <span class="tip-icon" tabindex="0" data-tip="Only needed when this dashboard is exposed beyond your own computer (e.g. deployed on a cloud VM) and CHAOS_API_TOKEN is set in .env. On a local demo you can ignore this completely.">ⓘ</span>
+            </div>
+            <button id="btn-emergency-rollback" class="btn btn-danger" onclick="triggerRollback()">
+                🛑 Emergency Rollback
+            </button>
+            <span class="tip-icon" tabindex="0" data-tip="Instantly undoes every active fault by hand: restarts any stopped container, clears network-delay rules, flushes firewall-drop rules, kills CPU-stress processes. This is the same cleanup the automatic Circuit Breaker runs — this button just lets a human trigger it on demand.">ⓘ</span>
+        </div>
+    </header>
+
+    <main class="container">
+
+        <!-- Beginner-friendly explainer -->
+        <details class="explainer" open>
+            <summary>📖 New here? Click to see how this whole system works (30-second read)</summary>
+            <div class="explainer-grid">
+                <div class="explainer-step">
+                    <div class="explainer-num">1</div>
+                    <div class="explainer-icon">🏪</div>
+                    <h3>A tiny online store is running</h3>
+                    <p>Three small programs below (Gateway, Order, Inventory) work together like a real e-commerce site. A robot "customer" in the background keeps clicking around the store every few seconds, so there is always real traffic flowing.</p>
+                </div>
+                <div class="explainer-step">
+                    <div class="explainer-num">2</div>
+                    <div class="explainer-icon">💥</div>
+                    <h3>You break something on purpose</h3>
+                    <p>Click <strong>▶ Run Experiment</strong> below. This doesn't just show a scary animation — it actually tells Docker to kill a real container, or actually slows down / blocks real network traffic using real Linux commands.</p>
+                </div>
+                <div class="explainer-step">
+                    <div class="explainer-num">3</div>
+                    <div class="explainer-icon">📡</div>
+                    <h3>The system watches itself</h3>
+                    <p>Every second, a health check measures how slow responses are and how many are failing. If things get bad enough to cross a safety line (an "SLO"), that's a <strong>breach</strong>.</p>
+                </div>
+                <div class="explainer-step">
+                    <div class="explainer-num">4</div>
+                    <div class="explainer-icon">🛟</div>
+                    <h3>It fixes itself — no human needed</h3>
+                    <p>The <strong>Circuit Breaker</strong> (like a fuse box) trips the instant a breach is detected, and automatically undoes the damage — restarting the dead container or clearing the bad network rule — usually in under 4 seconds.</p>
+                </div>
+            </div>
+        </details>
+
+        <!-- Live Alert Banner -->
+        <div id="alert-banner" class="banner hidden">
+            <span id="alert-icon">⚠️</span>
+            <span id="alert-text">No active alerts</span>
+        </div>
+
+        <!-- Section 1: Microservices Topology -->
+        <section class="section">
+            <h2 class="section-title">Target Microservices Infrastructure
+                <span class="tip-icon" tabindex="0" data-tip="This is the 'victim' application being tested. It's three real Docker containers talking to each other over HTTP, defined in target-app/gateway.py, order_service.py and inventory_service.py.">ⓘ</span>
+            </h2>
+            <p class="section-sub">The little store that's about to get broken on purpose. Each card below is one real, independently running container.</p>
+            <div class="grid grid-3">
+                <!-- Gateway Card -->
+                <div class="card" id="card-gateway">
+                    <div class="card-header">
+                        <span class="service-name">API Gateway (Ingress)</span>
+                        <span class="badge" id="badge-gateway">UNKNOWN</span>
+                    </div>
+                    <div class="card-body">
+                        <p class="node-meta">Port: <strong>8088</strong> • Public Entrypoint
+                            <span class="tip-icon" tabindex="0" data-tip="Plain English: this is the store's front door. Every customer click goes through here first, and it forwards the request to Order or Inventory behind the scenes. Powered by gateway.py.">ⓘ</span>
+                        </p>
+                        <div class="metric-row">
+                            <span>Status:</span>
+                            <span id="gateway-status" class="metric-val">Connecting...</span>
+                        </div>
+                        <div class="metric-row">
+                            <span>Instant Latency:</span>
+                            <span id="gateway-latency" class="metric-val">0 ms</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Order Service Card -->
+                <div class="card" id="card-order">
+                    <div class="card-header">
+                        <span class="service-name">Order Service</span>
+                        <span class="badge" id="badge-order">UNKNOWN</span>
+                    </div>
+                    <div class="card-body">
+                        <p class="node-meta">Port: <strong>5001</strong> • Downstream Dependency
+                            <span class="tip-icon" tabindex="0" data-tip="Plain English: this is the checkout counter. It takes your order and asks Inventory 'do we have this in stock?' before confirming. If Inventory doesn't answer in 2.5 seconds, it gives up rather than hanging forever — that 2.5s cutoff is the 'timeout'.">ⓘ</span>
+                        </p>
+                        <div class="metric-row">
+                            <span>Health:</span>
+                            <span id="order-status" class="metric-val">Connecting...</span>
+                        </div>
+                        <div class="metric-row">
+                            <span>Resilience:</span>
+                            <span class="metric-val">Timeout Gated (2.5s)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Inventory Service Card -->
+                <div class="card" id="card-inventory">
+                    <div class="card-header">
+                        <span class="service-name">Inventory Service</span>
+                        <span class="badge" id="badge-inventory">UNKNOWN</span>
+                    </div>
+                    <div class="card-body">
+                        <p class="node-meta">Port: <strong>5002</strong> • Stock & Catalog
+                            <span class="tip-icon" tabindex="0" data-tip="Plain English: this is the warehouse/stockroom. It knows what products exist and how many are left. Most chaos experiments target this one first, because Order depends on it.">ⓘ</span>
+                        </p>
+                        <div class="metric-row">
+                            <span>Health:</span>
+                            <span id="inventory-status" class="metric-val">Connecting...</span>
+                        </div>
+                        <div class="metric-row">
+                            <span>Fault Status:</span>
+                            <span id="inventory-fault" class="metric-val">None</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 2: Steady-State Telemetry & Gauges -->
+        <section class="section">
+            <h2 class="section-title">Steady-State Health Telemetry
+                <span class="tip-icon" tabindex="0" data-tip="'Steady state' = how the system behaves normally, before anything is broken. These three gauges are the live vital signs the Circuit Breaker is watching, computed in core/monitor.py from real request timings — nothing here is a canned number.">ⓘ</span>
+            </h2>
+            <p class="section-sub">The system's live vital signs — like a heart-rate monitor for the store. Watch these during an experiment.</p>
+            <div class="grid grid-3">
+                <div class="gauge-card">
+                    <div class="gauge-title">P95 Response Latency
+                        <span class="tip-icon" tabindex="0" data-tip="Plain English: line up the last 60 response times, fastest to slowest. P95 is the time the slowest 5% of them took. It matters more than an average, because it shows what your worst-treated real users actually feel.">ⓘ</span>
+                    </div>
+                    <div class="gauge-value" id="val-p95">0 ms</div>
+                    <div class="gauge-threshold">Threshold: &le; 800 ms</div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="bar-p95" style="width: 0%;"></div>
+                    </div>
+                </div>
+
+                <div class="gauge-card">
+                    <div class="gauge-title">System Error Rate
+                        <span class="tip-icon" tabindex="0" data-tip="Plain English: out of the last batch of health checks, what % came back broken/unreachable. If this crosses the SLO threshold alongside latency, the Circuit Breaker trips.">ⓘ</span>
+                    </div>
+                    <div class="gauge-value" id="val-error-rate">0.0%</div>
+                    <div class="gauge-threshold">SLO Threshold: &le; 15.0%</div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="bar-error" style="width: 0%;"></div>
+                    </div>
+                </div>
+
+                <div class="gauge-card">
+                    <div class="gauge-title">Circuit Breaker & Guardrail
+                        <span class="tip-icon" tabindex="0" data-tip="Plain English: think of a fuse box in a house. CLOSED = normal power flowing, armed and ready. MONITORING = an experiment is running, breaker is watching closely. TRIPPED = it detected danger and automatically cut power to the fault and healed the system.">ⓘ</span>
+                    </div>
+                    <div class="gauge-value" id="val-cb-state">CLOSED</div>
+                    <div class="gauge-threshold" id="val-cb-desc">Automatic Rollback Armed</div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="bar-cb" style="width: 100%; background: var(--green);"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Chaos Experiments Catalogue -->
+        <section class="section">
+            <h2 class="section-title">Automated Chaos Experiment Suite
+                <span class="tip-icon" tabindex="0" data-tip="Each row below is one YAML recipe from the experiments/ folder: what to break, for how long, and what 'too broken' means (the SLO). Clicking Run Experiment sends a real command to core/injector.py.">ⓘ</span>
+            </h2>
+            <p class="section-sub">Pick one failure to inject. Each card below explains, in plain English, exactly what will happen to the real containers when you click it.</p>
+            <div class="experiments-grid">
+                {% for exp in experiments %}
+                <div class="experiment-row">
+                    <div class="exp-info">
+                        <div class="exp-header">
+                            <span class="exp-title">{{ exp.name }}</span>
+                            <span class="exp-id">{{ exp.id }}</span>
+                        </div>
+                        <p class="exp-desc">{{ exp.description }}</p>
+                        <p class="plain-english">
+                            💡 <strong>In plain English:</strong>
+                            {% if exp.fault.type == "container_kill" %}
+                                this is like yanking the power cord out of the <strong>{{ exp.target }}</strong> container. It crashes immediately and stays down for up to {{ exp.fault.duration_seconds }}s unless the Circuit Breaker revives it sooner.
+                            {% elif exp.fault.type == "network_latency" %}
+                                this is like putting <strong>{{ exp.target }}</strong> on a laggy, overloaded internet connection — every reply from it arrives an extra {{ exp.fault.delay_ms }}ms late, for up to {{ exp.fault.duration_seconds }}s.
+                            {% elif exp.fault.type == "network_partition" %}
+                                this is like a firewall silently blocking all incoming traffic to <strong>{{ exp.target }}</strong> — requests just vanish into nothing (packet drop) for up to {{ exp.fault.duration_seconds }}s.
+                            {% elif exp.fault.type == "cpu_stress" %}
+                                this is like opening 100 heavy programs at once on <strong>{{ exp.target }}</strong>'s machine — its CPU pins at 100% and it can't keep up with real work, for up to {{ exp.fault.duration_seconds }}s.
+                            {% else %}
+                                this injects a <strong>{{ exp.fault.type }}</strong> fault into <strong>{{ exp.target }}</strong> for up to {{ exp.fault.duration_seconds }}s.
+                            {% endif %}
+                            If error rate goes above {{ exp.steady_state_hypothesis.max_error_rate_percent }}% or P95 latency goes above {{ exp.steady_state_hypothesis.max_p95_latency_ms }}ms, the Circuit Breaker trips and auto-heals it immediately — it won't wait for the full duration.
+                        </p>
+                        <div class="exp-tags">
+                            <span class="tag" title="Which container this experiment breaks">Target: {{ exp.target }}</span>
+                            <span class="tag" title="The kind of failure injected (container kill, network delay, packet drop, or CPU exhaustion)">Fault: {{ exp.fault.type }}</span>
+                            <span class="tag" title="Maximum time the fault is allowed to run before a planned rollback, if the Circuit Breaker doesn't trip first">Duration: {{ exp.fault.duration_seconds }}s</span>
+                            <span class="tag" title="The safety line: if real error rate exceeds this %, it counts as a breach">Max Error: {{ exp.steady_state_hypothesis.max_error_rate_percent }}%</span>
+                            <span class="tag" title="The safety line: if real P95 latency exceeds this, it counts as a breach">Max Latency: {{ exp.steady_state_hypothesis.max_p95_latency_ms }}ms</span>
+                        </div>
+                    </div>
+                    <div class="exp-action">
+                        <button class="btn btn-primary" onclick="runExperiment('{{ exp.id }}')">
+                            ▶ Run Experiment
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Section 4: Live Event Audit Log -->
+        <section class="section">
+            <div class="section-header-split">
+                <h2 class="section-title">Real-Time Chaos Audit Log
+                    <span class="tip-icon" tabindex="0" data-tip="A live, timestamped diary of everything the backend actually did: fault injected, breach detected, rollback executed. Useful as evidence that nothing was staged — every line here corresponds to a real action in the code.">ⓘ</span>
+                </h2>
+                <button class="btn btn-sm" onclick="clearLogs()">Clear View</button>
+            </div>
+            <p class="section-sub">This is the system talking to you directly — read it out loud during your demo as proof the automation is real.</p>
+            <div class="terminal-window" id="terminal-logs">
+                <div class="log-line log-INFO"><span class="log-time">[00:00:00]</span> [INFO] Chaos Engine monitoring system active. Ready to inject experiments.</div>
+            </div>
+        </section>
+
+        <!-- Glossary for complete beginners -->
+        <details class="explainer glossary">
+            <summary>📘 Glossary — plain-English definitions of every term on this page</summary>
+            <dl class="glossary-list">
+                <dt>Chaos Engineering</dt>
+                <dd>Breaking your own system on purpose, in a controlled way, to find weaknesses before a real outage finds them for you.</dd>
+                <dt>Fault Injection</dt>
+                <dd>The actual act of causing a failure — killing a container, slowing the network, dropping packets, maxing out CPU.</dd>
+                <dt>Steady State</dt>
+                <dd>How the system behaves when everything is healthy — the "normal" baseline you compare against during an experiment.</dd>
+                <dt>SLO (Service Level Objective)</dt>
+                <dd>A safety line you decide in advance, e.g. "error rate must stay under 15%." Crossing it means the experiment has gone too far.</dd>
+                <dt>P95 Latency</dt>
+                <dd>95% of requests are faster than this number. A better "worst-case for most users" measure than a simple average.</dd>
+                <dt>Circuit Breaker</dt>
+                <dd>Software fuse box. Watches live health metrics and automatically disconnects/undoes a fault the instant it becomes dangerous.</dd>
+                <dt>Blast Radius</dt>
+                <dd>How much of the system gets damaged by a fault. Good chaos engineering keeps this small and contained.</dd>
+                <dt>Rollback</dt>
+                <dd>Undoing the fault: restarting a killed container, clearing a network-delay rule, flushing a firewall-drop rule, killing stress processes.</dd>
+                <dt>Docker Container</dt>
+                <dd>A lightweight, isolated box that runs one program (here: one microservice) with its own filesystem and network view.</dd>
+            </dl>
+        </details>
+    </main>
+
+    <footer class="footer">
+        <p>Advanced Cloud System Software Design • Case Study Group 17: Automated Cloud Chaos Engineering Engine</p>
+    </footer>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

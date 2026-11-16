@@ -1,0 +1,19 @@
+id: "04_cpu_exhaustion_stress"
+name: "Noisy Neighbor CPU Starvation"
+description: "Simulates severe CPU hogging and host compute resource exhaustion on the public API Gateway."
+target: "gateway"
+fault:
+  type: "cpu_stress"
+  cpu_percent: 100
+  duration_seconds: 25
+
+steady_state_hypothesis:
+  endpoint: "http://gateway:8088/health"
+  max_error_rate_percent: 20.0
+  max_p95_latency_ms: 1200.0
+  probe_interval_seconds: 1.0
+  consecutive_breaches_allowed: 3
+
+rollback:
+  auto_rollback: true
+  recovery_action: "kill_cpu_stress"

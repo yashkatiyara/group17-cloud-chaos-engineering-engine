@@ -1,0 +1,110 @@
+services:
+  inventory-service:
+    build:
+      context: ./target-app
+      dockerfile: Dockerfile
+    container_name: inventory-service
+    environment:
+      - SERVICE_NAME=inventory-service
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - chaos-net
+    init: true
+    mem_limit: 256m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5002/health || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+  order-service:
+    build:
+      context: ./target-app
+      dockerfile: Dockerfile
+    container_name: order-service
+    environment:
+      - SERVICE_NAME=order-service
+      - INVENTORY_SERVICE_URL=http://inventory-service:5002
+      - REQUEST_TIMEOUT_SECONDS=2.5
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      inventory-service:
+        condition: service_healthy
+    networks:
+      - chaos-net
+    init: true
+    mem_limit: 256m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5001/health || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+  gateway:
+    build:
+      context: ./target-app
+      dockerfile: Dockerfile
+    container_name: gateway
+    environment:
+      - SERVICE_NAME=gateway
+      - ORDER_SERVICE_URL=http://order-service:5001
+      - INVENTORY_SERVICE_URL=http://inventory-service:5002
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "8088:8088"
+    depends_on:
+      order-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+    networks:
+      - chaos-net
+    init: true
+    mem_limit: 384m
+    cpus: 1.0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8088/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  chaos-engine:
+    build:
+      context: ./chaos-engine
+      dockerfile: Dockerfile
+    container_name: chaos-engine
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./experiments:/app/experiments
+    environment:
+      - GATEWAY_URL=http://gateway:8088
+      - EXPERIMENTS_DIR=/app/experiments
+      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local-docker}
+      - CLOUD_PROVIDER=${CLOUD_PROVIDER:-docker}
+      - CHAOS_API_TOKEN=${CHAOS_API_TOKEN:-}
+    ports:
+      - "9000:9000"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    networks:
+      - chaos-net
+    init: true
+    mem_limit: 384m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  chaos-net:
+    driver: bridge

@@ -1,0 +1,24 @@
+# Secrets / credentials — never commit
+.env
+*.pem
+*.key
+
+# Terraform local state and provider cache
+deploy/aws-ec2/terraform/.terraform/
+deploy/aws-ec2/terraform/terraform.tfstate
+deploy/aws-ec2/terraform/terraform.tfstate.backup
+deploy/aws-ec2/terraform/*.tfvars
+deploy/aws-ec2/terraform/crash.log
+
+# Python
+__pycache__/
+*.pyc
+
+# Build/intermediate artifacts from generating docs
+docs/video_frames/
+
+# Playwright MCP debug artifacts
+.playwright-mcp/
+
+# OS cruft
+.DS_Store

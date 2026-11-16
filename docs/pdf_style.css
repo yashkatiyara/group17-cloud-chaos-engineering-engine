@@ -1,0 +1,11 @@
+img {
+  max-width: 100%;
+  max-height: 220mm;
+  width: auto;
+  height: auto;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  page-break-before: auto;
+  display: block;
+  margin: 0.5em auto;
+}

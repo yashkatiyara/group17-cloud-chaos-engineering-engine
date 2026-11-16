@@ -1,0 +1,19 @@
+id: "02_cross_az_latency"
+name: "Cross-AZ Network Latency Spike"
+description: "Simulates cloud routing congestion and cross-Availability Zone WAN jitter by injecting 800ms packet latency into Order Service."
+target: "order-service"
+fault:
+  type: "network_latency"
+  delay_ms: 800
+  duration_seconds: 25
+
+steady_state_hypothesis:
+  endpoint: "http://gateway:8088/health"
+  max_error_rate_percent: 15.0
+  max_p95_latency_ms: 600.0
+  probe_interval_seconds: 1.0
+  consecutive_breaches_allowed: 2
+
+rollback:
+  auto_rollback: true
+  recovery_action: "clear_tc"

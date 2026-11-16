@@ -1,0 +1,18 @@
+id: "01_instance_termination"
+name: "EC2 Node Crash (Instance Termination)"
+description: "Simulates sudden compute node failure in Availability Zone B by forcefully terminating the Inventory Microservice."
+target: "inventory-service"
+fault:
+  type: "container_kill"
+  duration_seconds: 20
+
+steady_state_hypothesis:
+  endpoint: "http://gateway:8088/health"
+  max_error_rate_percent: 15.0
+  max_p95_latency_ms: 800.0
+  probe_interval_seconds: 1.0
+  consecutive_breaches_allowed: 2
+
+rollback:
+  auto_rollback: true
+  recovery_action: "restart_container"
