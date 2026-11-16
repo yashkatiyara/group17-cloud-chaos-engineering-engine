@@ -14,6 +14,7 @@ cp .env.example .env     # defaults are fine for a local demo
 ```
 
 Wait for `🚀 SYSTEM READY!`. Then open:
+
 - Dashboard: http://localhost:9000
 - Target app: http://localhost:8088
 
