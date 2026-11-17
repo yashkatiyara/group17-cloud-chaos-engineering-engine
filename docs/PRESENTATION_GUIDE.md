@@ -89,7 +89,49 @@ Either way, the **mechanism** is identical: Docker containers stand in for "comp
 
 ---
 
-## 6. Script for presenting to your teacher
+## 6. Proof it's really running on AWS cloud infrastructure (not your laptop)
+
+Run these live, in front of your teacher, from your own machine — each one is
+evidence neither you nor I control, which is what makes it convincing.
+
+**1. Reverse DNS resolves to Amazon's own domain** — this is the strongest proof,
+since only AWS controls this record:
+```bash
+host 15.206.80.15
+```
+```
+15.80.206.15.in-addr.arpa domain name pointer ec2-15-206-80-15.ap-south-1.compute.amazonaws.com.
+```
+
+**2. The app itself self-reports its deployment mode** — this JSON is generated live
+by the running control plane, not edited by hand:
+```bash
+curl -s http://15.206.80.15:9000/healthz
+```
+```json
+{"status": "healthy", "service": "chaos-control-plane",
+ "deployment_mode": "aws-ec2-docker", "cloud_provider": "aws",
+ "docker_runtime_connected": true}
+```
+
+**3. The AWS Console shows the exact same instance and IP** — open this link (your
+AWS account) and show the running instance with the matching public IP:
+`https://ap-south-1.console.aws.amazon.com/ec2/home?region=ap-south-1#InstanceDetails:instanceId=i-05fbaff53304f3f4b`
+(Instance `i-05fbaff53304f3f4b`, type `t3.small`, region `ap-south-1`, state `running`.)
+
+**4. It works from a completely different network** — ask your teacher to open
+`http://15.206.80.15:9000` on *their own* phone or laptop, on their own WiFi/data
+connection, with your laptop's screen off or disconnected from the network entirely.
+If it still loads, it cannot be running on your machine.
+
+**5. SSH in and show the containers running on the remote host directly:**
+```bash
+ssh -i deploy/aws-ec2/terraform/group17-chaos-demo-key.pem ubuntu@15.206.80.15 "docker compose ps"
+```
+
+---
+
+## 7. Script for presenting to your teacher
 
 1. **Open with the pitch** (Section 1 above).
 2. **Show the dashboard**, point at the 3 healthy service cards and the `CLOSED` circuit breaker.
@@ -98,10 +140,10 @@ Either way, the **mechanism** is identical: Docker containers stand in for "comp
 5. **Point at the trip**: "Our safety threshold was breached, so the Circuit Breaker fired automatically — no one clicked anything."
 6. **Point at the audit log timestamps**: "Rollback completed in under 2 seconds."
 7. **Prove it's not staged**: run `docker ps` in a terminal before/after — show the container's uptime reset.
-8. **Mention the cloud deployment** if you did it: "The exact same thing also runs on a real AWS EC2 instance, reachable over the internet, for anyone with the link."
+8. **Mention the cloud deployment** if you did it: "The exact same thing also runs on a real AWS EC2 instance, reachable over the internet, for anyone with the link" — run through the proof steps in Section 6 if they're skeptical.
 9. **Be upfront about scope**: single-host Docker Compose, not Kubernetes; a teaching/demo control plane, not production-grade auth.
 
-## 7. Likely teacher questions
+## 8. Likely teacher questions
 
 - **"Is the data real or fake?"** → Real. A background task generates genuine HTTP traffic; every metric comes from timing real requests or real Docker/Linux events (see Section 3).
 - **"Does it use Kubernetes?"** → No, by design — single-host Docker Compose. Explained honestly in the README.
