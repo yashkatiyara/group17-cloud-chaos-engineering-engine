@@ -103,9 +103,14 @@ terraform apply \
   -var='vpc_id=vpc-xxxxxxxx' \
   -var='subnet_id=subnet-xxxxxxxx' \
   -var='key_name=my-key' \
-  -var='admin_cidr=YOUR.PUBLIC.IP/32' \
-  -var='demo_cidr=YOUR.PUBLIC.IP/32'
+  -var='admin_cidr=YOUR.PUBLIC.IP/32'
 ```
+
+`admin_cidr` restricts SSH (port 22) to you. The dashboard (9000) and gateway (8088)
+default to `0.0.0.0/0` — publicly reachable without needing to chase your changing IP —
+which is safe because the upload step below always sets `CHAOS_API_TOKEN`, gating every
+state-changing call. Pass `-var='dashboard_cidr=YOUR.PUBLIC.IP/32'` instead if you'd
+rather keep the dashboard private too.
 
 Then upload and start the stack on the new host:
 ```bash
@@ -123,21 +128,25 @@ ssh -i deploy/aws-ec2/terraform/my-key.pem ubuntu@$IP \
 
 ---
 
-## Recipe 6 — Your IP changed and the cloud dashboard stopped responding
+## Recipe 6 — Your IP changed and SSH stopped working
 
-The security group only allows `admin_cidr`/`demo_cidr`. If your ISP gave you a new
-IP (common after a router restart or a new day), re-apply with the new one:
+With the default setup (Recipe 5), the dashboard and gateway stay publicly reachable
+regardless of IP changes — only SSH (port 22) is IP-restricted, via `admin_cidr`. If
+your ISP gave you a new IP (common after a router restart or a new day) and you need
+to SSH in, re-apply with the new one:
 
 ```bash
-curl -s https://ifconfig.me   # your current public IP
+curl -4 -s https://ifconfig.me   # your current public IPv4 (use -4, not -6)
 cd deploy/aws-ec2/terraform
 terraform apply -auto-approve \
   -var='vpc_id=vpc-xxxxxxxx' \
   -var='subnet_id=subnet-xxxxxxxx' \
   -var='key_name=my-key' \
-  -var='admin_cidr=<new-ip>/32' \
-  -var='demo_cidr=<new-ip>/32'
+  -var='admin_cidr=<new-ip>/32'
 ```
+
+If you instead locked down `dashboard_cidr`/`demo_cidr` to a specific IP, pass those
+too the same way.
 
 ---
 
@@ -149,8 +158,7 @@ terraform destroy \
   -var='vpc_id=vpc-xxxxxxxx' \
   -var='subnet_id=subnet-xxxxxxxx' \
   -var='key_name=my-key' \
-  -var='admin_cidr=YOUR.PUBLIC.IP/32' \
-  -var='demo_cidr=YOUR.PUBLIC.IP/32'
+  -var='admin_cidr=YOUR.PUBLIC.IP/32'
 ```
 
 Always do this after a presentation/demo — the instance bills continuously while running.
@@ -187,7 +195,8 @@ headless browser (e.g. Playwright):
 | Chaos Engine can't inject faults (`docker_runtime_connected: false`) | `/var/run/docker.sock` not mounted or no `NET_ADMIN` cap | Confirm `docker-compose.yml` volumes/`cap_add` weren't edited out |
 | Experiment never trips the breaker | SLO thresholds too loose for your hardware's baseline latency | Lower `max_p95_latency_ms` / `max_error_rate_percent` in the experiment YAML |
 | `401 Unauthorized` calling `/api/experiments/.../run` | `CHAOS_API_TOKEN` is set but you didn't send `X-Chaos-Token` | Paste the token into the dashboard's token box, or add the header to `curl` |
-| Cloud dashboard unreachable but `docker compose ps` shows healthy | Your public IP changed since the security group was created | See Recipe 6 |
+| Can't SSH into the cloud host anymore | Your public IP changed since `admin_cidr` was set | See Recipe 6 |
+| Dashboard/gateway unreachable despite `dashboard_cidr`/`demo_cidr` set to your IP | Same cause as above — you locked them down instead of using the public default | Same fix as Recipe 6, or re-apply with the `0.0.0.0/0` default |
 
 ---
 

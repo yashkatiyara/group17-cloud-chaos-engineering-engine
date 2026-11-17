@@ -20,13 +20,20 @@ variable "key_name" {
 }
 
 variable "admin_cidr" {
-  description = "Your public IP/CIDR allowed to SSH and open the dashboard"
+  description = "Your public IP/CIDR allowed to SSH (port 22) into the host"
   type        = string
 }
 
-variable "demo_cidr" {
-  description = "CIDR allowed to call the target gateway on port 8088"
+variable "dashboard_cidr" {
+  description = "CIDR allowed to open the chaos dashboard (port 9000). Safe to leave as 0.0.0.0/0 once CHAOS_API_TOKEN is set, since state-changing endpoints require the token."
   type        = string
+  default     = "0.0.0.0/0"
+}
+
+variable "demo_cidr" {
+  description = "CIDR allowed to call the target gateway (port 8088)"
+  type        = string
+  default     = "0.0.0.0/0"
 }
 
 variable "instance_type" {

@@ -46,7 +46,7 @@ resource "aws_security_group" "group17" {
     from_port   = 9000
     to_port     = 9000
     protocol    = "tcp"
-    cidr_blocks = [var.admin_cidr]
+    cidr_blocks = [var.dashboard_cidr]
   }
 
   ingress {

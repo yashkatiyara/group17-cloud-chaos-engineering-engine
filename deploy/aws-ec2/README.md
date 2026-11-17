@@ -13,11 +13,17 @@ terraform apply \
   -var='vpc_id=vpc-xxxxxxxx' \
   -var='subnet_id=subnet-xxxxxxxx' \
   -var='key_name=your-keypair' \
-  -var='admin_cidr=YOUR.PUBLIC.IP/32' \
-  -var='demo_cidr=YOUR.PUBLIC.IP/32'
+  -var='admin_cidr=YOUR.PUBLIC.IP/32'
 ```
 
-Only SSH and the dashboard are allowed from `admin_cidr`; port 8088 is allowed from `demo_cidr`. Ports 5001 and 5002 remain private to the Docker network.
+SSH (port 22) is restricted to `admin_cidr` — update this whenever your IP changes
+(see Recipe 6 in `COOKBOOK.md`). The dashboard (`dashboard_cidr`, port 9000) and the
+target gateway (`demo_cidr`, port 8088) both **default to `0.0.0.0/0`** so the demo
+link keeps working regardless of whose network you're presenting from — this is safe
+*only* because `CHAOS_API_TOKEN` is always set below, which gates every
+state-changing call behind the `X-Chaos-Token` header. Pass `-var='dashboard_cidr=...'`
+and/or `-var='demo_cidr=...'` explicitly if you'd rather restrict those too. Ports
+5001 and 5002 remain private to the Docker network regardless.
 
 ## 2. Upload and start the project
 
@@ -55,13 +61,17 @@ Open the Terraform `dashboard_url` from the allowed admin IP. Paste the token fr
 
 ## Safety notes
 
-This project is intentionally a teaching/demo control plane. Do not expose port 9000 to `0.0.0.0/0`, do not mount the Docker socket into an internet-facing service, and use a temporary AWS account or sandbox. Destroy the host after the presentation:
+This project is intentionally a teaching/demo control plane, not production infrastructure.
+Only leave `dashboard_cidr`/`demo_cidr` at their public `0.0.0.0/0` default while
+`CHAOS_API_TOKEN` is set in `.env` (the default upload flow below always sets one) —
+without a token, anyone could trigger fault injection on your host. Never mount the
+Docker socket into any other internet-facing service, and use a temporary AWS account
+or sandbox. Destroy the host after the presentation:
 
 ```bash
 terraform destroy \
   -var='vpc_id=vpc-xxxxxxxx' \
   -var='subnet_id=subnet-xxxxxxxx' \
   -var='key_name=your-keypair' \
-  -var='admin_cidr=YOUR.PUBLIC.IP/32' \
-  -var='demo_cidr=YOUR.PUBLIC.IP/32'
+  -var='admin_cidr=YOUR.PUBLIC.IP/32'
 ```
